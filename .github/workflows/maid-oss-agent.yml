@@ -74,8 +74,33 @@ jobs:
           grep -q MAID_GROQ_120B_READY /tmp/groq-smoke.txt
           echo 'GROQ_120B_SMOKE_PASSED' >> "$GITHUB_STEP_SUMMARY"
           echo "SOURCE_SHA=$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+  authorize-pilot:
+    if: github.event_name == 'issue_comment'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      authorized: ${{ steps.verify.outputs.authorized }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Fail-closed verify exact owner issue 16 comment
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          if python3 scripts/maid_oss_guard.py --event "$GITHUB_EVENT_PATH"; then
+            echo 'authorized=true' >> "$GITHUB_OUTPUT"
+            echo 'OWNER_PILOT_AUTHORIZED' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'authorized=false' >> "$GITHUB_OUTPUT"
+            echo 'OWNER_PILOT_REJECTED: no execution' >> "$GITHUB_STEP_SUMMARY"
+          fi
   pilot-coding:
-    if: github.event_name == 'issue_comment' && github.event.issue.number == 16 && github.event.comment.user.login == 'karanzing1992' && github.event.sender.login == 'karanzing1992' && github.event.comment.body == '/maid-oss' && github.event.issue.pull_request == null
+    needs: authorize-pilot
+    if: needs.authorize-pilot.outputs.authorized == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
