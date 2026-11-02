@@ -29,3 +29,7 @@ OpenCode 1.19.3 MIT, MAID upstream MIT, GH Actions runner, Groq-hosted open-weig
 - Disable workflow or revert it to stop future scheduled runs. GitHub Actions UI can cancel an active job. No automatic retry after a failed test.
 - Check `maid:blocked` label and Actions error; submit a reviewed fix, remove label to re-enable, or manually dispatch after a correction.
 - Keep source_sha, tested_sha, artifact_sha explicit; never claim signed APK or web application release without evidence.
+
+## Groq tool-call compatibility fix (2026-11-02)
+Original worker run 41414565727 correctly selected I01 and used a strong Groq model, but failed when the model emitted an OpenCode read tool call without its mandatory filePath. The fault was in LLM tool-call compatibility, not owner authorization or Groq credentials. The issue was blocked automatically; no code pushed.
+The repair uses Groq API strict JSON schema (one files[] array with path and full file content) and a local deterministic writer without exposing AI read/bash/network tools. Path/symlink/dependency integrity validation and post-generation yarn lint + Jest remain mandatory. The backend is still Groq GPT OSS 120B and free-tier usage is bounded to one response per selected task. OpenCode remains available for separate approved interactive coding; structured writer is the unattended pipeline.
