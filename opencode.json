@@ -1,6 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "model": "groq/openai/gpt-oss-120b",
+  "model": "groq/qwen/qwen3.8-27b",
   "permission": {
     "bash": "deny",
     "external_directory": "deny",

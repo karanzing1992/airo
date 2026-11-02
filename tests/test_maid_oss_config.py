@@ -5,7 +5,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 class GroqConfigTests(unittest.TestCase):
     def test_model_and_permissions(self):
         cfg=json.loads((ROOT/"opencode.json").read_text())
-        self.assertEqual(cfg["model"],"groq/openai/gpt-oss-120b")
+        self.assertEqual(cfg["model"],"groq/qwen/qwen3.8-27b")
         self.assertEqual(cfg["permission"]["bash"],"deny")
         self.assertEqual(cfg["permission"]["external_directory"],"deny")
     def test_workflow_credential_and_owner_gate(self):

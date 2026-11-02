@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Groq GPT OSS 120B exact four-file React-lint repair. No arbitrary commands."""
+"""Groq Qwen 3.8 27B exact four-file React-lint repair. No arbitrary commands."""
 import json,os,pathlib,sys
-MODEL="openai/gpt-oss-120b"
+MODEL="qwen/qwen3.8-27b"
 FILES=("components/dropdowns/dropdown.tsx","components/dropdowns/voice-dropdown.tsx","components/views/header-view.tsx","components/views/neural-network-animation.tsx")
 ERRORS=(
  "react-hooks/immutability: never mutate selectedItem.selectedLabel prop; derive a display fallback",
@@ -100,7 +100,7 @@ def main():
   with Groq(api_key=key,timeout=150,max_retries=0) as api:
    res=api.chat.completions.create(model=MODEL,messages=[{"role":"user","content":make_prompt(pathlib.Path.cwd())}],
        response_format={"type":"json_schema","json_schema":{"name":"maid_m0_react_patch","strict":True,"schema":schema()}},
-       max_completion_tokens=9500,reasoning_effort="medium",temperature=0.1)
+       max_completion_tokens=3900,reasoning_effort="high",temperature=1.0)
   try:
    changes=validate(json.loads(res.choices[0].message.content),pathlib.Path.cwd())
    mode="GROQ_VALIDATED_EDIT"

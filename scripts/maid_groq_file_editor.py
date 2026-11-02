@@ -6,7 +6,7 @@ import os
 import pathlib
 import sys
 
-MODEL = "openai/gpt-oss-120b"
+MODEL = "qwen/qwen3.8-27b"
 BASE_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 def valid_path(name, patterns):
@@ -52,7 +52,7 @@ def api_payload(task, context):
     return {"model":MODEL,
        "messages":[{"role":"user","content":instruction+"\n\nTrusted source context:\n"+json.dumps(context,ensure_ascii=False)}],
        "response_format":{"type":"json_schema","json_schema":{"name":"maid_approved_file_changes","strict":True,"schema":schema}},
-       "reasoning_effort":"medium","max_completion_tokens":8192,"temperature":0.2,"stream":False}
+       "reasoning_effort":"high","max_completion_tokens":3900,"temperature":1.0,"stream":False}
 
 def validated_files(result,task,root):
     if not isinstance(result,dict) or not isinstance(result.get("files"),list):

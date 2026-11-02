@@ -5,6 +5,7 @@ m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
 class M0SafetyTests(unittest.TestCase):
  def test_fixed_scope(self):
   self.assertEqual(len(m.FILES),4)
+  self.assertEqual(m.MODEL,'qwen/qwen3.8-27b')
   self.assertEqual(m.schema()["additionalProperties"],False)
  def setup(self,root):
   for path in m.FILES:
