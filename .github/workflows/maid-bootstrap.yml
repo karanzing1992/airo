@@ -1,0 +1,111 @@
+name: MAID Pinned Upstream Bootstrap and Android CI
+on:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/maid-bootstrap.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: maid-upstream-bootstrap
+  cancel-in-progress: false
+jobs:
+  source-import-and-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      UPSTREAM_SHA: 60206bd164bbe271e74543cc616de5f2278da511
+      IMPORT_BRANCH: bootstrap/maid-upstream-60206bd
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout isolated workspace
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Fetch pinned upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --filter=blob:none https://github.com/Mobile-Artificial-Intelligence/maid.git /tmp/maid-upstream
+          git -C /tmp/maid-upstream checkout --detach "$UPSTREAM_SHA"
+          actual="$(git -C /tmp/maid-upstream rev-parse HEAD)"
+          test "$actual" = "$UPSTREAM_SHA"
+      - name: Create review branch and import upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -B "$IMPORT_BRANCH" origin/master
+          # Keep the MAID management docs/workflows. Preserve upstream LICENSE.
+          rsync -a --exclude '/.git/' --exclude '/.github/' --exclude '/README.md' --exclude '/docs/maid/' /tmp/maid-upstream/ ./
+          test -s LICENSE
+          test -f package.json
+          cat > UPSTREAM_SOURCE.md <<EOF
+          # Upstream MAID source attribution
+          Original repository: https://github.com/Mobile-Artificial-Intelligence/maid
+          Pinned baseline revision: $UPSTREAM_SHA
+          Upstream license: MIT (see LICENSE).
+          This derivative preserves the original authorship attribution and will use its own package identifier and signing keys for future releases.
+          EOF
+          git add -A
+          git diff --cached --stat
+          if ! git diff --cached --quiet; then
+            git commit -m 'build: import pinned MAID source with attribution'
+            git push origin "$IMPORT_BRANCH"
+          else
+            echo 'Import branch already matches source.'
+          fi
+      - name: Open draft import PR (best effort)
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          gh pr view "$IMPORT_BRANCH" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 ||
+          gh pr create --repo "$GITHUB_REPOSITORY" --head "$IMPORT_BRANCH" --base master --draft \
+            --title 'M0: pinned MAID upstream import and Android baseline' \
+            --body 'Closes #1 after independent QA. Preserves upstream MIT LICENSE and existing Android features. This PR is not a production release. Android baseline CI evidence is in this workflow run. Do not merge until verified.'
+      - name: Setup Node and Java
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.4'
+          cache: yarn
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK and NDK
+        run: |
+          sdkmanager --install 'platform-tools' 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.1.12297006'
+          yes | sdkmanager --licenses >/dev/null || true
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+      - name: Execute MAID tests and lint
+        run: |
+          yarn test
+          yarn lint
+      - name: Prebuild and compile Android debug APK
+        run: |
+          yarn prebuild
+          chmod +x android/gradlew
+          ( cd android && ./gradlew assembleDebug --no-daemon )
+      - name: Upload unsigned development/debug APK if build succeeded
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maid-upstream-baseline-debug-apk
+          path: |
+            android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+      - name: Exact baseline receipt
+        if: always()
+        run: |
+          echo 'Upstream_SHA='${UPSTREAM_SHA}
+          echo 'Workspace_SHA='$(git rev-parse HEAD)
+          echo 'Import_branch='${IMPORT_BRANCH}
+          echo 'Run_ID='${GITHUB_RUN_ID}
+          echo 'A debug APK is NOT the signed certified MAID Yard Manager release.'
