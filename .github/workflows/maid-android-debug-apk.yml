@@ -1,0 +1,128 @@
+name: MAID Android Debug APK Evidence
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'package.json'
+      - 'yarn.lock'
+      - 'app/**'
+      - 'components/**'
+      - 'context/**'
+      - '.github/workflows/maid-android-debug-apk.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'package.json'
+      - 'yarn.lock'
+      - 'app/**'
+      - 'components/**'
+      - 'context/**'
+      - '.github/workflows/maid-android-debug-apk.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: maid-android-debug-apk-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  workflow-source-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: APK pipeline policy assertions
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'yarn lint' .github/workflows/maid-android-debug-apk.yml
+          grep -q 'yarn test' .github/workflows/maid-android-debug-apk.yml
+          grep -q 'assembleDebug' .github/workflows/maid-android-debug-apk.yml
+          grep -q 'sha256sum' .github/workflows/maid-android-debug-apk.yml
+          test -s docs/maid/APK_DEBUG_DELIVERY_RUNBOOK.md
+  compile-android-debug:
+    needs: workflow-source-guard
+    if: ${{ hashFiles('package.json') != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      CI: '1'
+      JAVA_TOOL_OPTIONS: -Xmx4g
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20.19.4'
+          cache: yarn
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
+      - name: Android platform and NDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install 'platforms;android-36' 'build-tools;36.0.0' 'ndk;27.1.12297006'
+          yes | sdkmanager --licenses > /dev/null || true
+      - name: Frozen dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          timeout 540s yarn install --frozen-lockfile --non-interactive
+      - name: Mandatory lint and complete Jest
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 300s yarn lint
+          timeout 420s yarn test
+      - name: Reproducible Android debug build
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 600s yarn prebuild
+          chmod +x android/gradlew
+          ( cd android && timeout 900s ./gradlew assembleDebug --no-daemon --max-workers=2 )
+      - name: Verify APK archive and source-bound checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=android/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$apk"
+          unzip -t "$apk" >/dev/null
+          mkdir -p delivery
+          cp "$apk" delivery/maid-upstream-m0-debug.apk
+          ( cd delivery && sha256sum maid-upstream-m0-debug.apk > SHA256SUMS )
+          python3 - <<'PY'
+          import json,os,pathlib
+          p=pathlib.Path("delivery")
+          receipt={
+              "source_sha":os.environ["GITHUB_SHA"],
+              "run_id":os.environ["GITHUB_RUN_ID"],
+              "build_type":"ANDROID_DEBUG",
+              "signed_production_release":False,
+              "certified_maid_yard_manager":False,
+              "qa":{"eslint":"PASSED","jest":"PASSED","gradle_assembleDebug":"PASSED"},
+              "notes":"Upstream MAID M0 baseline only; not a finished MAID Yard Manager."
+          }
+          (p/"RECEIPT.json").write_text(json.dumps(receipt,indent=2)+"\n")
+          PY
+          cat delivery/SHA256SUMS >> "$GITHUB_STEP_SUMMARY"
+          echo "SOURCE_SHA=$GITHUB_SHA RUN_ID=$GITHUB_RUN_ID" >> "$GITHUB_STEP_SUMMARY"
+          echo "DEBUG_APK_ONLY. NOT production signing or MAID Yard Manager functional certification." >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload verified Android debug APK and receipts
+        uses: actions/upload-artifact@v4
+        with:
+          name: maid-m0-debug-apk-${{ github.sha }}
+          path: delivery/
+          retention-days: 14
+          compression-level: 0
+          if-no-files-found: error
