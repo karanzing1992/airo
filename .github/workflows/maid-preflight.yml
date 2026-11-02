@@ -27,22 +27,29 @@ jobs:
       - name: Scope result
         run: echo 'Check task acceptance evidence separately. Passing preflight does not certify Android/web or hosts.'
   mobile-android-build:
-    if: ${{ hashFiles('package.json') != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
       - uses: actions/checkout@v4
+      - name: Detect imported MAID source
+        id: source
+        run: |
+          if [ -f package.json ]; then echo 'available=true' >> "$GITHUB_OUTPUT"; else echo 'available=false' >> "$GITHUB_OUTPUT"; fi
       - uses: actions/setup-node@v4
+        if: steps.source.outputs.available == 'true'
         with:
           node-version: '20'
           cache: yarn
       - uses: actions/setup-java@v4
+        if: steps.source.outputs.available == 'true'
         with:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@v3
+        if: steps.source.outputs.available == 'true'
       - name: Android source checks
+        if: steps.source.outputs.available == 'true'
         run: |
           set -euo pipefail
           corepack enable
