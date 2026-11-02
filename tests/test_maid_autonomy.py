@@ -44,6 +44,12 @@ class Admission(unittest.TestCase):
     def test_blocked_issue_skipped(self):
         a=issue(1);a["labels"]=["maid:blocked"]
         self.assertIsNone(mod.select([a],[{"number":14,"state":"OPEN","title":"M0","headRefName":"bootstrap"}],policy(),master_has_upstream=False))
+    def test_git_status_keeps_leading_status_column(self):
+        from unittest.mock import patch
+        import subprocess
+        fake=subprocess.CompletedProcess(args=["git","status"],returncode=0,stdout=" M package.json\n?? eslint.config.js\n",stderr="")
+        with patch.object(mod.subprocess,"run",return_value=fake):
+            self.assertEqual(mod.changed_paths(),["package.json","eslint.config.js"])
     def test_lint_may_not_be_disabled(self):
         a=policy()["tasks"][0]
         self.assertEqual(a["issue"],1)
