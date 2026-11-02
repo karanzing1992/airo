@@ -1,0 +1,207 @@
+{
+  "version": 1,
+  "owner": "karanzing1992",
+  "repo": "karanzing1992/airo",
+  "limits": {
+    "maxConcurrentIssues": 1,
+    "reviewRequired": true,
+    "productionReleaseForbidden": true,
+    "hostEnrollmentForbidden": true,
+    "automaticMergeForbidden": true
+  },
+  "tasks": [
+    {
+      "issue": 1,
+      "base": "bootstrap/maid-upstream-60206bd",
+      "phase": "M0-lint",
+      "allowedPaths": [
+        "package.json",
+        "yarn.lock",
+        "eslint.config.*",
+        ".eslintrc.*",
+        "docs/maid/receipts/M0_LINT_AUTONOMY.md"
+      ],
+      "maxFiles": 6,
+      "maxBytes": 600000,
+      "prompt": "Fix the pinned upstream MAID lint noninteractive setup without weakening the existing `expo lint` and Jest test scripts. Install/configure proper Expo-compatible ESLint dependencies by editing package.json, with a reproducible yarn.lock handled by the controlled CI step. Add eslint config if required. Keep upstream runtime features and original MIT license unchanged. Do not edit app/source code or workflows. Do not claim lint pass; CI will test it. You may create docs/maid/receipts/M0_LINT_AUTONOMY.md with a factual change rationale. Do not use shell or network tools. Create real repository file changes using the edit/write tool."
+    },
+    {
+      "issue": 2,
+      "base": "master",
+      "phase": "M1-contracts",
+      "dependsOn": [
+        1
+      ],
+      "allowedPaths": [
+        "packages/protocol/**",
+        "docs/maid/receipts/M1_CONTRACTS_AUTONOMY.md"
+      ],
+      "maxFiles": 24,
+      "maxBytes": 350000,
+      "prompt": "Implement the versioned MAID shared protocol foundations in packages/protocol: TypeScript discriminated unions, JSON schema for manager messages, approvals, host status, task receipts and integration manifests, compatibility versioning and executable test fixtures using open-source Node test runner. Match docs/maid/PRODUCT_SCOPE_V1.md and WEB_MOBILE_PARITY.md. No credentials, remote calls, deployment or existing app modifications. Edit actual files in the repo and add tests. Avoid hallucinated passing tests; CI will independently test."
+    },
+    {
+      "issue": 3,
+      "base": "master",
+      "phase": "M1-cloud-api",
+      "dependsOn": [
+        2
+      ],
+      "allowedPaths": [
+        "services/control-plane/**",
+        "infra/cloudflare/**",
+        "docs/maid/receipts/M1_CLOUD_API_AUTONOMY.md"
+      ],
+      "maxFiles": 30,
+      "maxBytes": 420000,
+      "prompt": "Implement TypeScript Cloudflare Worker API skeleton with least-privileged identity/session checks, tenant/project isolation, safe default-deny, D1 durable schema/migrations, rate-limit and CSRF negative tests. No live cloud deployment and no real credentials. Base on verified shared protocols only. Implement real tested source."
+    },
+    {
+      "issue": 4,
+      "base": "master",
+      "phase": "M1-langgraph",
+      "dependsOn": [
+        3
+      ],
+      "allowedPaths": [
+        "services/graph/**",
+        "docs/maid/receipts/M1_LANGGRAPH_AUTONOMY.md"
+      ],
+      "maxFiles": 30,
+      "maxBytes": 420000,
+      "prompt": "Implement LangGraph.js resumable task orchestration with versioned task graph and checkpoint persistence, approvals and idempotent retries. Include deterministic offline tests. No privileged execution, no production deployment."
+    },
+    {
+      "issue": 5,
+      "base": "master",
+      "phase": "M2-yard-agents",
+      "dependsOn": [
+        4
+      ],
+      "allowedPaths": [
+        "services/yard-agent/**",
+        "docs/maid/receipts/M2_YARD_AGENT_AUTONOMY.md"
+      ],
+      "maxFiles": 30,
+      "maxBytes": 420000,
+      "prompt": "Implement independent outbound Dell/Mac agent protocol skeleton with capability-scoped authorization, HMAC receipts, heartbeat, task cancellation and negative replay tests. Do not contact, configure or install on any real machine; owner enrollment gate later."
+    },
+    {
+      "issue": 6,
+      "base": "master",
+      "phase": "M3-model-router",
+      "dependsOn": [
+        4
+      ],
+      "allowedPaths": [
+        "packages/model-router/**",
+        "docs/maid/receipts/M3_ROUTER_AUTONOMY.md"
+      ],
+      "maxFiles": 30,
+      "maxBytes": 420000,
+      "prompt": "Implement modular model router: Groq primary, capability-based routing, provider health/quotas, no unsupported modality fallback, explicit accounting and negative tests. Do not spend paid quota beyond approved Groq workflow or store keys."
+    },
+    {
+      "issue": 7,
+      "base": "master",
+      "phase": "M4-android",
+      "dependsOn": [
+        5,
+        6
+      ],
+      "allowedPaths": [
+        "app/**",
+        "components/**",
+        "hooks/**",
+        "src/**",
+        "packages/ui-contracts/**",
+        "docs/maid/receipts/M4_ANDROID_AUTONOMY.md"
+      ],
+      "maxFiles": 50,
+      "maxBytes": 700000,
+      "prompt": "Integrate MAID Yard Manager Android shell preserving upstream GGUF/offline features and Expo; create secure owner session, chat/tasks, host status, approval UI and model selector with typed API contracts and tests. Do not change signing/release privileges."
+    },
+    {
+      "issue": 8,
+      "base": "master",
+      "phase": "M4-web",
+      "dependsOn": [
+        7
+      ],
+      "allowedPaths": [
+        "apps/web/**",
+        "packages/ui-contracts/**",
+        "docs/maid/receipts/M4_WEB_AUTONOMY.md"
+      ],
+      "maxFiles": 50,
+      "maxBytes": 700000,
+      "prompt": "Build responsive desktop/mobile web/PWA manager UI for MAID with common typed protocols and parity for chat, tasks, hosts, approvals, models, integrations, accessibility; include tests. No production deployment."
+    },
+    {
+      "issue": 9,
+      "base": "master",
+      "phase": "M4-integrations",
+      "dependsOn": [
+        7,
+        8
+      ],
+      "allowedPaths": [
+        "packages/integrations/**",
+        "docs/maid/receipts/M4_INTEGRATIONS_AUTONOMY.md"
+      ],
+      "maxFiles": 50,
+      "maxBytes": 700000,
+      "prompt": "Implement versioned integration manifests, scopes, OAuth metadata and test/install/revoke interfaces common to Android and web with isolation/replay negative tests. Do not enroll live external accounts."
+    },
+    {
+      "issue": 10,
+      "base": "master",
+      "phase": "M5-multimodal",
+      "dependsOn": [
+        8,
+        9
+      ],
+      "allowedPaths": [
+        "packages/multimodal/**",
+        "services/media/**",
+        "docs/maid/receipts/M5_MULTIMODAL_AUTONOMY.md"
+      ],
+      "maxFiles": 50,
+      "maxBytes": 700000,
+      "prompt": "Implement modular multimodal transport for voice, vision, documents and artifacts, privacy/consent/upload controls and tests, exposing common browser/Android API contracts. No personal media upload or public release."
+    },
+    {
+      "issue": 11,
+      "base": "master",
+      "phase": "M5-memory",
+      "dependsOn": [
+        9,
+        10
+      ],
+      "allowedPaths": [
+        "services/memory/**",
+        "packages/notifications/**",
+        "docs/maid/receipts/M5_MEMORY_AUTONOMY.md"
+      ],
+      "maxFiles": 50,
+      "maxBytes": 700000,
+      "prompt": "Implement per-project private RAG and notification foundations with ACL retention provenance and tests. No live emails/Telegram/push delivery without owner opt-in."
+    },
+    {
+      "issue": 12,
+      "base": "master",
+      "phase": "M5-security",
+      "dependsOn": [
+        11
+      ],
+      "allowedPaths": [
+        "security/audits/**",
+        "tests/security/**",
+        "docs/maid/receipts/M5_SECURITY_AUTONOMY.md"
+      ],
+      "maxFiles": 50,
+      "maxBytes": 700000,
+      "prompt": "Build independent security-negative test harness for authorization, replay rejection, privacy, quota denial, model injection, host receipts and emergency stop. Report observed outcomes only; no fake certification. No live destructive testing."
+    }
+  ]
+}
