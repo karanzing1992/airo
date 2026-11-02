@@ -7,7 +7,9 @@ on:
     paths:
       - .github/workflows/maid-autonomous-queue.yml
       - scripts/maid_autonomy.py
+      - scripts/maid_groq_file_editor.py
       - tests/test_maid_autonomy.py
+      - tests/test_maid_groq_file_editor.py
       - docs/maid/AUTONOMOUS_ISSUE_POLICY.json
   push:
     branches: [master]
@@ -47,7 +49,8 @@ jobs:
           set -euo pipefail
           python3 -m unittest discover -s tests -p 'test_maid_autonomy.py' -v
           python3 -m json.tool docs/maid/AUTONOMOUS_ISSUE_POLICY.json >/dev/null
-          python3 -m py_compile scripts/maid_autonomy.py
+          python3 -m py_compile scripts/maid_autonomy.py scripts/maid_groq_file_editor.py
+          python3 -m unittest discover -s tests -p 'test_maid_groq_file_editor.py' -v
       - name: Authorize caller or automatic schedule
         id: auth
         run: python3 scripts/maid_autonomy.py admit
@@ -81,6 +84,7 @@ jobs:
         run: |
           set -euo pipefail
           cp scripts/maid_autonomy.py "$RUNNER_TEMP/maid_autonomy.py"
+          cp scripts/maid_groq_file_editor.py "$RUNNER_TEMP/maid_groq_file_editor.py"
           cp opencode.json "$RUNNER_TEMP/maid-opencode.json"
           python3 - <<'PY'
           import base64,json,os,pathlib
@@ -99,26 +103,14 @@ jobs:
           git checkout -b "$branch" "origin/$base"
           echo "MAID_BRANCH=$branch" >> "$GITHUB_ENV"
           echo "MAID_BASE=$base" >> "$GITHUB_ENV"
-      - name: Install pinned OpenCode before AI-modifiable files
-        run: npm install --global opencode-ai@1.19.3
-      - name: Generate bounded issue changes using Groq 120B
+      - name: Generate bounded edits from Groq strict JSON schema (no model tool calls)
         shell: bash
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           set -euo pipefail
-          if [ -z "${GROQ_API_KEY:-}" ]; then echo '::error::Groq key missing; no work executed'; exit 1; fi
-          export OPENCODE_CONFIG="$RUNNER_TEMP/maid-opencode.json"
-          prompt="$(python3 - <<'PY'
-          import json,os
-          d=json.load(open(os.environ["RUNNER_TEMP"]+"/maid-task.json"))
-          print("You are the autonomous MAID GitHub code editor for owner issue #"+str(d["issue"])+". "+d["prompt"])
-          print("Read existing project docs and make REAL file edits using edit/write tools. Do not merely respond with JSON or recommendations.")
-          print("Allowed modified paths only: "+", ".join(d["allowedPaths"]))
-          print("No shell/web tools, no secrets, no production changes, no fake passes. Scope is one independently reviewable PR.")
-          PY
-          )"
-          timeout 840s opencode run --pure --agent build -m groq/openai/gpt-oss-120b "$prompt" | tee "$RUNNER_TEMP/maid-agent-result.log"
+          test -n "${GROQ_API_KEY:-}" || { echo '::error::Missing Groq credential'; exit 1; }
+          python3 "$RUNNER_TEMP/maid_groq_file_editor.py" "$RUNNER_TEMP/maid-task.json"
       - name: Validate strict issue-specific changed files
         run: |
           set -euo pipefail
