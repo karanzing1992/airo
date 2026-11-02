@@ -1,0 +1,142 @@
+name: MAID OSS Autopilot Pilot
+on:
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/maid-oss-agent.yml
+      - opencode.json
+      - scripts/maid_oss_guard.py
+      - tests/test_maid_oss_guard.py
+  pull_request:
+    paths:
+      - .github/workflows/maid-oss-agent.yml
+      - opencode.json
+      - scripts/maid_oss_guard.py
+      - tests/test_maid_oss_guard.py
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: maid-oss-pilot
+  cancel-in-progress: false
+jobs:
+  guard:
+    if: github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Negative authorization tests
+        run: python3 -m unittest discover -s tests -p 'test_maid_oss_guard.py' -v
+      - name: Static source checks
+        run: |
+          python3 -m py_compile scripts/maid_oss_guard.py
+          python3 -m json.tool opencode.json >/dev/null
+          test -s docs/maid/OSS_AUTOPILOT_RUNBOOK.md
+  model-smoke:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    needs: guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install OpenCode 1.19.3
+        run: npm install --global opencode-ai@1.19.3
+      - name: Start ephemeral Ollama and fetch free coding model
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSLo /tmp/maid-ollama-install.sh https://ollama.com/install.sh
+          sh /tmp/maid-ollama-install.sh
+          nohup ollama serve >/tmp/maid-ollama.log 2>&1 &
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:11434/api/tags >/dev/null
+          timeout 360s ollama pull qwen2.5-coder:1.5b
+      - name: Real OpenCode free-model inference smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 360s opencode run --pure --model ollama/qwen2.5-coder:1.5b 'Return exactly MAID_LOCAL_MODEL_READY. No tools.' | tee /tmp/maid-model-smoke.txt
+          grep -q MAID_LOCAL_MODEL_READY /tmp/maid-model-smoke.txt
+          echo 'MODEL_SMOKE_PASSED: opencode 1.19.3 via local Ollama qwen2.5-coder:1.5b' >> "$GITHUB_STEP_SUMMARY"
+          echo "SOURCE_SHA=$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+  pilot-coding:
+    if: github.event_name == 'issue_comment' && github.event.issue.number == 16 && github.event.comment.user.login == 'karanzing1992' && github.event.sender.login == 'karanzing1992' && github.event.comment.body == '/maid-oss' && github.event.issue.pull_request == null
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate owner-only issue request and negative cases
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/maid_oss_guard.py --event "$GITHUB_EVENT_PATH"
+          python3 -m unittest discover -s tests -p 'test_maid_oss_guard.py' -v
+      - name: Create isolated pilot branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = karanzing1992/airo
+          branch="autopilot/pilot-16-$GITHUB_RUN_ID"
+          git checkout -b "$branch"
+          echo "MAID_AGENT_BRANCH=$branch" >> "$GITHUB_ENV"
+      - name: Install OpenCode and run local OSS model
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --global opencode-ai@1.19.3
+          curl -fsSLo /tmp/maid-ollama-install.sh https://ollama.com/install.sh
+          sh /tmp/maid-ollama-install.sh
+          nohup ollama serve >/tmp/maid-ollama.log 2>&1 &
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then break; fi
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:11434/api/tags >/dev/null
+          timeout 360s ollama pull qwen2.5-coder:1.5b
+          timeout 540s opencode run --pure --model ollama/qwen2.5-coder:1.5b 'MAID owner-approved pilot issue 16. Read docs/maid/OSS_AUTOPILOT_RUNBOOK.md. Create exactly one file docs/maid/AUTOPILOT_PILOT_RESULT.md with headings: Objective, Architecture, Model, Security, Test Plan, Open Blockers. Describe the actual planned issue-to-PR workflow without falsely claiming deployment, testing, signing or release; include how to verify a future Actions run. Do not edit any existing file. Do not run shell commands or make network requests. The output file must be valid Markdown and under 16KB.' | tee /tmp/maid-pilot-agent-output.txt
+      - name: Fail-closed review of generated changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/maid_oss_guard.py --validate-diff
+          git diff --check
+          grep -q '^#' docs/maid/AUTOPILOT_PILOT_RESULT.md
+          echo "PILOT_DIFF_VALIDATED: $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+      - name: Push only reviewed pilot file and open draft PR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- docs/maid/AUTOPILOT_PILOT_RESULT.md
+          git diff --cached --check
+          git commit -m 'docs: MAID local model autonomous coding pilot (#16)'
+          gh auth setup-git
+          git push origin "HEAD:refs/heads/$MAID_AGENT_BRANCH"
+          gh pr create --repo "$GITHUB_REPOSITORY" --base master --head "$MAID_AGENT_BRANCH" --draft --title 'MAID OSS autopilot pilot: issue #16' --body 'Proves owner-gated issue-to-PR coding with free local inference. Generated artifact only; no production deploy or certification. Requires independent source/CI review before merge. Refs #16.'
+          echo "DRAFT_PR_CREATED: $MAID_AGENT_BRANCH" >> "$GITHUB_STEP_SUMMARY"
