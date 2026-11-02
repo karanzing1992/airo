@@ -3,6 +3,19 @@ on:
   schedule:
     - cron: '17 */4 * * *'
   workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/maid-autonomous-queue.yml
+      - scripts/maid_autonomy.py
+      - tests/test_maid_autonomy.py
+      - docs/maid/AUTONOMOUS_ISSUE_POLICY.json
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/maid-autonomous-queue.yml
+      - scripts/maid_autonomy.py
+      - tests/test_maid_autonomy.py
+      - docs/maid/AUTONOMOUS_ISSUE_POLICY.json
   issue_comment:
     types: [created]
 permissions:
@@ -29,6 +42,12 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Independent policy and negative authorization tests
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tests -p 'test_maid_autonomy.py' -v
+          python3 -m json.tool docs/maid/AUTONOMOUS_ISSUE_POLICY.json >/dev/null
+          python3 -m py_compile scripts/maid_autonomy.py
       - name: Authorize caller or automatic schedule
         id: auth
         run: python3 scripts/maid_autonomy.py admit
