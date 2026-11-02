@@ -36,3 +36,6 @@ The repair uses Groq API strict JSON schema (one files[] array with path and ful
 
 ## Official Groq SDK transport correction
 Second I01 run 41415260687 failed closed with HTTP 403 from Python stdlib urllib immediately, before model response. Historical MAD/Goa stack hit the same urllib/Cloudflare issue and solved it using the official Groq SDK. Autonomy now pins official open-source Python groq SDK v1.7.0 (Apache-2.0), runs through its httpx transport, and preserves strict JSON-schema output and deterministic path/diff tests. This correction does not increase model quota, allow shell tools or broaden write privileges. Provider runtime and first I01 draft PR are unverified until retried.
+
+## M0 lint reproducible repair after Groq schema validation
+I01 third attempt run 41415770163 used official Groq SDK and returned strict structured JSON, but required ESLint dependencies were omitted and were rejected. No source PR was pushed. M0 now applies a deterministic official Expo SDK57 lint dependency/config step (eslint 9, eslint-config-expo 57.0.2), with exact unchanged script/runtime dependency checks, then requires real yarn lint+Jest and branch-scoped diff verification. Groq 120B remains the active generative worker for M1+ issue stages, without the local model. Failed lint/test still stops and marks the task blocked. No false certification.
