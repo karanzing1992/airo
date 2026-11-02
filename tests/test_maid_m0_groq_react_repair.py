@@ -32,4 +32,22 @@ class M0SafetyTests(unittest.TestCase):
    d={"changes":[{"path":p,"replacements":[{"find":"const original = 1;","replace":"const original = 2;"}]} for p in m.FILES]}
    d["changes"][0]["replacements"]=[{"find":"a","replace":"b"}]
    with self.assertRaises(ValueError):m.validate(d,r)
+
+ def test_fallback_preserves_original_behavior_signatures(self):
+  with tempfile.TemporaryDirectory() as t:
+   r=pathlib.Path(t)
+   x=[
+    '  if (selectedItem && !selectedItem.selectedLabel) {\n    selectedItem.selectedLabel = selectedItem.label;\n  }\n typeof selectedItem?.selectedLabel === "string"\n {selectedItem.selectedLabel}\n selectedItem?.selectedLabel\n',
+    '  useEffect(() => {\n    loadVoices();\n    return () => clearInterval(interval);',
+    'function HeaderViewItem() {\n  if (!headers || !setHeaders) return null;\n  const updateKey = () => {\n    if (key.trim() === "" || key === oldKey) return;\n  const updateParameter = (newValue: string) => {',
+    '  onDoneRef.current = onDone;\n  repeatRef.current = repeat;\n\n  useEffect(() => {\n    setVisible(new Set());\n    const timeouts: ReturnType<typeof setTimeout>[] = [];'
+   ]
+   for path,raw in zip(m.FILES,x):
+    p=r/path;p.parent.mkdir(parents=True,exist_ok=True)
+    if path==m.FILES[2]: raw= '  if (!headers || !setHeaders) return null;\n'+raw
+    p.write_text(raw)
+   d=m.deterministic_repair(r)
+   self.assertEqual(len(d),4)
+   self.assertNotIn("selectedItem.selectedLabel =",d[m.FILES[0]])
+   self.assertIn("setTimeout(() => setVisible(new Set()), 0)",d[m.FILES[3]])
 if __name__=="__main__":unittest.main()

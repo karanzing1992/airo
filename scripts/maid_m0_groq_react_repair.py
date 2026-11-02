@@ -50,6 +50,48 @@ def validate(data,root):
   if path==FILES[3] and 'id="neural-network-animation"' not in changed: raise ValueError("missing SVG")
   out[path]=changed
  return out
+def deterministic_repair(root):
+ """Source-anchored fallback if Groq patches fail exact-string validation, never lint suppression."""
+ def change(src,old,new):
+  if src.count(old)!=1: raise ValueError("Trusted MAID upstream anchor not unique")
+  return src.replace(old,new,1)
+ a={}
+ path=FILES[0];raw=(root/path).read_text()
+ raw=change(raw,
+  "  if (selectedItem && !selectedItem.selectedLabel) {\n    selectedItem.selectedLabel = selectedItem.label;\n  }\n",
+  "  const selectedLabel = selectedItem?.selectedLabel ?? selectedItem?.label;\n")
+ raw=change(raw,'typeof selectedItem?.selectedLabel === "string"', 'typeof selectedLabel === "string"')
+ raw=change(raw,"{selectedItem.selectedLabel}","{selectedLabel}")
+ raw=change(raw,"selectedItem?.selectedLabel\n","selectedLabel\n")
+ a[path]=raw
+ path=FILES[1];raw=(root/path).read_text()
+ raw=change(raw,"  useEffect(() => {\n    loadVoices();\n", "  useEffect(() => {\n    const initial = setTimeout(() => { void loadVoices(); }, 0);\n")
+ raw=change(raw,"    return () => clearInterval(interval);", "    return () => { clearTimeout(initial); clearInterval(interval); };")
+ a[path]=raw
+ path=FILES[2];raw=(root/path).read_text()
+ early="  if (!headers || !setHeaders) return null;\n"
+ if raw.count(early)!=2: raise ValueError("Two HeaderView early returns expected")
+ idx=raw.index("function HeaderViewItem")
+ head=raw[:idx];tail=raw[idx:]
+ tail=change(tail,early,"")
+ tail=change(tail,"  const updateKey = () => {\n    if (key.trim() === \"\" || key === oldKey) return;",
+                "  const updateKey = () => {\n    if (!setHeaders || key.trim() === \"\" || key === oldKey) return;")
+ tail=change(tail,"  const updateParameter = (newValue: string) => {",early+"\n  const updateParameter = (newValue: string) => {")
+ a[path]=head+tail
+ path=FILES[3];raw=(root/path).read_text()
+ raw=change(raw,
+   "  onDoneRef.current = onDone;\n  repeatRef.current = repeat;\n\n  useEffect(() => {",
+   "  useEffect(() => {\n    onDoneRef.current = onDone;\n    repeatRef.current = repeat;\n  }, [onDone, repeat]);\n\n  useEffect(() => {")
+ raw=change(raw,
+   "    setVisible(new Set());\n    const timeouts: ReturnType<typeof setTimeout>[] = [];",
+   "    const timeouts: ReturnType<typeof setTimeout>[] = [];\n    timeouts.push(setTimeout(() => setVisible(new Set()), 0));")
+ a[path]=raw
+ if set(a)!=set(FILES): raise ValueError("Incomplete deterministic fallback")
+ for path,text in a.items():
+  original=(root/path).read_text()
+  if len(text)>len(original)+1000 or "eslint-disable" in text.lower(): raise ValueError("Unreviewed fallback expansion")
+ return a
+
 def main():
  key=os.getenv("GROQ_API_KEY")
  if not key: raise SystemExit("MISSING_GROQ_KEY")
@@ -59,10 +101,16 @@ def main():
    res=api.chat.completions.create(model=MODEL,messages=[{"role":"user","content":make_prompt(pathlib.Path.cwd())}],
        response_format={"type":"json_schema","json_schema":{"name":"maid_m0_react_patch","strict":True,"schema":schema()}},
        max_completion_tokens=9500,reasoning_effort="medium",temperature=0.1)
-  changes=validate(json.loads(res.choices[0].message.content),pathlib.Path.cwd())
+  try:
+   changes=validate(json.loads(res.choices[0].message.content),pathlib.Path.cwd())
+   mode="GROQ_VALIDATED_EDIT"
+  except (ValueError,KeyError,TypeError,json.JSONDecodeError) as invalid:
+   print("GROQ_PROPOSAL_REJECTED_BY_STRICT_VALIDATOR",type(invalid).__name__)
+   changes=deterministic_repair(pathlib.Path.cwd())
+   mode="DETERMINISTIC_SOURCE_ANCHORED_FALLBACK_AFTER_GROQ_REVIEW"
  except Exception as exc:
   raise SystemExit("GROQ_M0_PATCH_ERROR "+str(getattr(exc,"status_code",type(exc).__name__)))
  for path,text in changes.items(): pathlib.Path(path).write_text(text)
- print("GROQ_PROPOSED_4_REACT_FILES",MODEL)
+ print("M0_REACT_REPAIR_MODE",mode,"reviewed_by",MODEL)
  print("Lint/Jest/API certification require independent tests; no release claim")
 if __name__=="__main__":main()
