@@ -1,0 +1,52 @@
+name: MAID Preflight
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scope-and-source-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Contract and license preflight
+        shell: bash
+        run: |
+          set -euo pipefail
+          for p in docs/maid/PRODUCT_SCOPE_V1.md docs/maid/WEB_MOBILE_PARITY.md docs/maid/INTEGRATIONS_AND_MODELS.md docs/maid/CERTIFICATION_AND_AUTONOMY.md .github/copilot-instructions.md; do test -s "$p"; done
+          if [ -f package.json ]; then
+            test -f LICENSE
+            corepack enable
+            yarn install --frozen-lockfile
+            yarn test
+          else
+            echo 'SOURCE_NOT_IMPORTED: docs only. Not a build certification.'
+          fi
+      - name: Scope result
+        run: echo 'Check task acceptance evidence separately. Passing preflight does not certify Android/web or hosts.'
+  mobile-android-build:
+    if: ${{ hashFiles('package.json') != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: yarn
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Android source checks
+        run: |
+          set -euo pipefail
+          corepack enable
+          yarn install --frozen-lockfile
+          yarn test
+          yarn lint
+          echo 'Full native APK build requires SDK/NDK and signing config in a later dedicated release workflow.'
