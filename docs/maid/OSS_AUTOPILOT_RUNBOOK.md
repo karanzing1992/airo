@@ -1,35 +1,25 @@
-# MAID Open-Source Autonomous Coding Worker — Pilot Runbook
-Date: 2026-11-02 | Repo: karanzing1992/airo | Version: pilot-1 (not production release)
+# MAID Groq GPT OSS 120B Autopilot — Runbook v2
+Date: 2026-11-02 | Repository: karanzing1992/airo | Source-only workflow (not a certified Android manager release)
 
-## Reference / reuse / cost gate
-- [MAID upstream](https://github.com/Mobile-Artificial-Intelligence/maid), MIT, pinned 60206bd164bbe271e74543cc616de5f2278da511. Existing MAID Android source is in draft PR #14 and must not be overwritten.
-- [OpenCode](https://github.com/anomalyco/opencode), MIT, CLI pinned 1.19.3; installed previously on Dell but its configured local Ollama endpoint was offline. This pilot instead uses an ephemeral GitHub-hosted runner to avoid Dell GitHub token access.
-- [Ollama](https://github.com/ollama/ollama), MIT. Model [Qwen2.5-Coder 1.5B](https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct), Apache-2.0. Verify license in the loaded source before distribution. Runs on GitHub-hosted CPU, no commercial model API or Copilot.
-- [GitHub Actions](https://docs.github.com/actions), public-repository hosted CI subject to platform fair-use, storage, network and security limits; no inference guarantees or unlimited free compute.
-- This is a small model for a narrowly scoped pilot. The future production coding worker must benchmark a stronger free model, preferably from verified owned local hardware or approved free provider, before writing security-sensitive code.
+## Reuse and cost gate
+- MAID original: https://github.com/Mobile-Artificial-Intelligence/maid , MIT, pinned revision `60206bd164bbe271e74543cc616de5f2278da511`; draft import PR #14 retained unchanged.
+- OpenCode: https://github.com/anomalyco/opencode , MIT, CLI 1.19.3, already used in Dell pilot and native Groq integration.
+- Groq hosted inference: https://console.groq.com/docs/coding-with-groq , model ID `openai/gpt-oss-120b` (strong production-tier coding and tool-using model). Open weight but Groq hosting is proprietary provider-managed. API usage may cost money outside free allowances: run only with an existing approved free-tier key and stay within quotas. No auto-upgrade, no paid subscription configured by this workflow.
+- GitHub Actions: https://docs.github.com/actions , free public repository actions subject to platform quotas. No extra host machine or private repo credentials for pilot.
 
-## Why this transport
-Dell's gh CLI is not authenticated and Ollama service is inactive; using the token provided to GitHub Actions removes the need to store new long-lived GitHub credentials on Dell. The worker runs only on ephemeral GitHub runners; each run pulls a model and is CPU/time-limited. This is not a live Dell/Mac remote agent. Never run third-party issue-sourced commands using untrusted pull_request code with write token.
+## Why we switched
+Prior GitHub Actions run 41408524811 successfully invoked local Ollama model Qwen2.5 Coder 1.5B, but it printed a JSON pseudo-task instead of creating the requested file. The strict diff gate correctly failed and nothing was pushed. The user explicitly requested a strong Groq model. Groq GPT OSS 120B is now the only configured agent backend, not an automatic fallback to Ollama.
 
-## What is installed
-- .github/workflows/maid-oss-agent.yml: safe CI guards, local model smoke test on main push or workflow_dispatch, and exact-owner gated issue #16 pilot.
-- opencode.json: localhost-only model, no API keys, no bash/web requests/external directory permission for the AI.
-- scripts/maid_oss_guard.py and tests: negative authorization and allowed-diff validation.
-- Issue #16: single doc-file coding pilot.
+## Credentials
+Set repository **Actions secret** `GROQ_API_KEY` for `karanzing1992/airo` from the owner's already-authorized Groq account. Only GitHub protected jobs on `master` receive the key. Do NOT paste keys in issues, PRs, source files, app config, chat or stdout. GitHub workflow token for publishing pilot PR is ephemeral and scoped to `contents: write` and `pull-requests: write`. The credential is **not** automatically copied from ChatGPT, Cloudflare, Dell or another GitHub repo. Without an authorized secret the smoke and pilot fail closed.
 
-## Run and verify
-1. Merge the workflow bootstrap PR after guard tests pass; a push on master should run the model-smoke and publish its result.
-2. Comment the exact line /maid-oss on ISSUE #16 from karanzing1992. No other issue, non-owner, PR comment or suffixed command may trigger coding.
-3. Inspect Github Actions job; verify successful real inference, actual docs/maid/AUTOPILOT_PILOT_RESULT.md diff, exactly one changed file, safe source SHA and successful draft PR creation.
-4. Review PR; verify no claimed certification without test evidence; merge only after owner/QA approval.
-5. Future iteration after pilot: replace pilot-only allowlist with issue dependency queue, capability requirements, CLI contract tests, Android/web CI and independent code-review gates. Never automatically deploy/sign/release before G5/G6 certification and host enrollment.
-6. Status labels: PREPARED != RUNNING != TEST_PASSED != PR_CREATED != MERGED != RELEASED.
+## Execution
+1. All changes proposed in a separate PR. PR checks include exact-owner issue validation tests and configuration/negative safeguards; secrets are never exposed during PR tests.
+2. After review and merge into `master`, the workflow runs **real Groq inference smoke** on the merged source SHA. A successful YAML validation alone is not an inference test. Investigate 401/403, 429, model retired, or quota outage without upgrading billing.
+3. Once smoke passes, the repository owner can post exactly `/maid-oss` on https://github.com/karanzing1992/airo/issues/16 . This is the sole enabled issue: not production issue queue.
+4. GitHub Actions validates actor/sender/issue/comment; agent must create one specific Markdown file `docs/maid/AUTOPILOT_PILOT_RESULT.md`. Both the file's existence and the sole allowed diff are validated before any push.
+5. If the guard succeeds, a **draft** PR is created. Review changes, CI and GitHub logs; no automatic merges or Android release.
+6. Only after this gate succeeds may broader issue-dependency automation be designed and independently certified. Feature parity, real Dell/Mac agents, security and APK release are separate issues.
 
-## Failure and recovery
-- Ollama download/endpoint failure: fail job, no PR; do not retry indefinitely or spend on paid API.
-- OpenCode unavailable / tool invocation failure: fail job with log; no unauthenticated fallback.
-- GitHub workflow write permission unavailable: no PR; inspect Actions > General; preserve least privilege.
-- Unexpected changed file: fail closed, do not push.
-- Missing model or model cannot follow instructions: no unverified claims, record failure and adjust only in a reviewed PR.
-- No forced Git operations or automated merging. No shared host service, token or Firefox session modified.
-- Revert automation merge commit to roll back; leave existing MAID PR and docs intact. Issue #16 can be closed when independently certified.
+## Owner gates and rollback
+No production launch, machine agent enrollment, root operations, Firebase/Android signing or release approval is implicit. Revert the Groq pilot commit to disable this worker. If missing credentials, stop; do not install another inference service, use another project token, or claim success. The model may make inaccurate changes, so tool permission prevents shell/network execution and the one-file allowlist prevents unauthorized writes from being published. This is a development pilot, not a sandbox for third-party issues.
