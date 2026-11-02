@@ -5,8 +5,6 @@ import json
 import os
 import pathlib
 import sys
-import urllib.error
-import urllib.request
 
 MODEL = "openai/gpt-oss-120b"
 BASE_URL = "https://api.groq.com/openai/v1/chat/completions"
@@ -101,19 +99,19 @@ def main():
     root=pathlib.Path.cwd()
     token=os.environ.get("GROQ_API_KEY")
     if not token: raise SystemExit("GROQ_API_KEY absent: fail closed")
-    payload=json.dumps(api_payload(task,source_context(task,root))).encode()
-    req=urllib.request.Request(BASE_URL,data=payload,method="POST",headers={
-        "Content-Type":"application/json","Authorization":"Bearer "+token})
     try:
-        with urllib.request.urlopen(req,timeout=130) as resp:
-            answer=json.load(resp)
-    except urllib.error.HTTPError as exc:
-        # Never print Groq response body: some error bodies may echo request metadata.
-        raise SystemExit("GROQ_HTTP_ERROR "+str(exc.code))
+        from groq import Groq
+    except ImportError:
+        raise SystemExit("GROQ_OFFICIAL_SDK_MISSING")
+    payload=api_payload(task,source_context(task,root))
+    try:
+        with Groq(api_key=token,timeout=130,max_retries=0) as client:
+            response=client.chat.completions.create(**payload)
+            content=response.choices[0].message.content
     except Exception as exc:
-        raise SystemExit("GROQ_NETWORK_OR_JSON_ERROR "+type(exc).__name__)
+        # No provider response body or sensitive request data is ever logged.
+        raise SystemExit("GROQ_SDK_ERROR "+str(getattr(exc,"status_code",type(exc).__name__)))
     try:
-        content=answer["choices"][0]["message"]["content"]
         response=json.loads(content)
         writes=validated_files(response,task,root)
     except Exception as exc:
