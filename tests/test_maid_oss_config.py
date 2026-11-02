@@ -11,7 +11,7 @@ class GroqConfigTests(unittest.TestCase):
     def test_workflow_credential_and_owner_gate(self):
         txt=(ROOT/".github/workflows/maid-oss-agent.yml").read_text()
         self.assertIn("secrets.GROQ_API_KEY",txt)
-        self.assertIn("groq/openai/gpt-oss-120b",txt)
+        self.assertIn("groq/qwen/qwen3.8-27b",txt)
         self.assertNotIn("ollama pull",txt)
         self.assertNotIn("ollama serve",txt)
         self.assertIn("if: github.event_name == 'issue_comment'",txt)
