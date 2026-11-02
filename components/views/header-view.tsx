@@ -127,10 +127,9 @@ function HeaderViewItem(props: HeaderViewItemProps) {
     }
   });
 
-  if (!headers || !setHeaders) return null;
 
   const updateKey = () => {
-    if (key.trim() === "" || key === oldKey) return;
+    if (!setHeaders || key.trim() === "" || key === oldKey) return;
 
     setHeaders((prev: Record<string, string>) => { 
       const updated = { ...prev };
@@ -146,6 +145,8 @@ function HeaderViewItem(props: HeaderViewItemProps) {
 
     return () => clearTimeout(handler);
   }, [key]);
+
+  if (!headers || !setHeaders) return null;
 
   const updateParameter = (newValue: string) => {
     if (key.trim() === "") return;

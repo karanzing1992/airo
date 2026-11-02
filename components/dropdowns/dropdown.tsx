@@ -153,19 +153,17 @@ function Dropdown<T>({
     </Modal>
   );
 
-  if (selectedItem && !selectedItem.selectedLabel) {
-    selectedItem.selectedLabel = selectedItem.label;
-  }
+  const selectedLabel = selectedItem?.selectedLabel ?? selectedItem?.label;
 
   return (
     <View ref={rootRef} style={styles.rootWrapper} collapsable={false}>
       <View style={styles.root}>
-        {typeof selectedItem?.selectedLabel === "string" ? (
+        {typeof selectedLabel === "string" ? (
           <Text style={styles.label} numberOfLines={1}>
-            {selectedItem.selectedLabel}
+            {selectedLabel}
           </Text>
         ) : (
-          selectedItem?.selectedLabel
+          selectedLabel
         )}
         <MaterialIconButton
           icon={open ? "arrow-drop-up" : "arrow-drop-down"}

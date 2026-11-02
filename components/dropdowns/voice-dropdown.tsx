@@ -32,13 +32,13 @@ function VoiceDropdown() {
   };
 
   useEffect(() => {
-    loadVoices();
+    const initial = setTimeout(() => { void loadVoices(); }, 0);
     
     const interval = setInterval(() => {
       loadVoices();
     }, 10000);
 
-    return () => clearInterval(interval);
+    return () => { clearTimeout(initial); clearInterval(interval); };
   }, []);
 
   const styles = StyleSheet.create({

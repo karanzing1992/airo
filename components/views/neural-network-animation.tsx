@@ -37,8 +37,10 @@ function NeuralNetworkAnimation({ onDone, repeat = false }: Props) {
   const [runKey, setRunKey] = useState(0);
   const onDoneRef = useRef(onDone);
   const repeatRef = useRef(repeat);
-  onDoneRef.current = onDone;
-  repeatRef.current = repeat;
+  useEffect(() => {
+    onDoneRef.current = onDone;
+    repeatRef.current = repeat;
+  }, [onDone, repeat]);
 
   useEffect(() => {
     const phases = [
@@ -53,8 +55,8 @@ function NeuralNetworkAnimation({ onDone, repeat = false }: Props) {
       shuffle([...L45]),
     ];
 
-    setVisible(new Set());
     const timeouts: ReturnType<typeof setTimeout>[] = [];
+    timeouts.push(setTimeout(() => setVisible(new Set()), 0));
 
     phases.forEach((phase, pi) => {
       const phaseStart = INITIAL_DELAY + pi * PHASE_GAP;
