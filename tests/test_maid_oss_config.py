@@ -16,4 +16,8 @@ class GroqConfigTests(unittest.TestCase):
         self.assertNotIn("ollama serve",txt)
         self.assertIn("github.event.comment.user.login == 'karanzing1992'",txt)
         self.assertIn("scripts/maid_oss_guard.py --validate-diff",txt)
+        self.assertIn("  authorize-pilot:",txt)
+        self.assertIn("needs: authorize-pilot",txt)
+        self.assertIn("if: needs.authorize-pilot.outputs.authorized == 'true'",txt)
+        self.assertIn('python3 scripts/maid_oss_guard.py --event "$GITHUB_EVENT_PATH"',txt)
 if __name__ == "__main__": unittest.main()
