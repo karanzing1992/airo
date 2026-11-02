@@ -64,15 +64,15 @@ jobs:
             exit 1
           fi
           echo 'GROQ_KEY_CONFIGURED (value never logged)' >> "$GITHUB_STEP_SUMMARY"
-      - name: Test real Groq GPT OSS 120B inference with OpenCode
+      - name: Test real Groq Qwen 3.8 27B inference with OpenCode
         shell: bash
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
         run: |
           set -euo pipefail
-          timeout 180s opencode run --pure -m groq/openai/gpt-oss-120b 'Return exactly MAID_GROQ_120B_READY and nothing else.' | tee /tmp/groq-smoke.txt
-          grep -q MAID_GROQ_120B_READY /tmp/groq-smoke.txt
-          echo 'GROQ_120B_SMOKE_PASSED' >> "$GITHUB_STEP_SUMMARY"
+          timeout 180s opencode run --pure -m groq/qwen/qwen3.8-27b 'Return exactly MAID_QWEN38_CODE_READY and nothing else.' | tee /tmp/groq-smoke.txt
+          grep -q MAID_QWEN38_CODE_READY /tmp/groq-smoke.txt
+          echo 'QWEN38_CODING_SMOKE_PASSED' >> "$GITHUB_STEP_SUMMARY"
           echo "SOURCE_SHA=$GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
   authorize-pilot:
     if: github.event_name == 'issue_comment'
@@ -129,7 +129,7 @@ jobs:
           branch="autopilot/pilot-16-$GITHUB_RUN_ID"
           git checkout -b "$branch"
           echo "MAID_AGENT_BRANCH=$branch" >> "$GITHUB_ENV"
-      - name: Run Groq 120B coding agent (bounded docs-only pilot)
+      - name: Run Groq Qwen 3.8 coding agent (bounded docs-only pilot)
         shell: bash
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -140,7 +140,7 @@ jobs:
             exit 1
           fi
           npm install --global opencode-ai@1.19.3
-          timeout 420s opencode run --pure --agent build -m groq/openai/gpt-oss-120b 'You are the GitHub issue #16 MAID coding agent. Read docs/maid/OSS_AUTOPILOT_RUNBOOK.md. USE YOUR FILE EDIT/WRITE TOOL, not merely a chat reply, to CREATE exactly one new file docs/maid/AUTOPILOT_PILOT_RESULT.md. Markdown headings: Objective, Architecture, Model, Security, Test Plan, Open Blockers. Accurately explain the strong Groq model, owner authorization, CI, the prior local-model pilot failure, evidence limitations and steps to verify real future runs. Do not assert deployments or certification. Do not edit other files. Do not run shell commands or web requests. Under 16KB. Write the file now.' | tee /tmp/maid-groq-output.txt
+          timeout 420s opencode run --pure --agent build -m groq/qwen/qwen3.8-27b 'You are the GitHub issue #16 MAID coding agent. Read docs/maid/OSS_AUTOPILOT_RUNBOOK.md. USE YOUR FILE EDIT/WRITE TOOL, not merely a chat reply, to CREATE exactly one new file docs/maid/AUTOPILOT_PILOT_RESULT.md. Markdown headings: Objective, Architecture, Model, Security, Test Plan, Open Blockers. Accurately explain the strong Groq model, owner authorization, CI, the prior local-model pilot failure, evidence limitations and steps to verify real future runs. Do not assert deployments or certification. Do not edit other files. Do not run shell commands or web requests. Under 16KB. Write the file now.' | tee /tmp/maid-groq-output.txt
       - name: Fail-closed review of generated changes
         shell: bash
         run: |
@@ -159,8 +159,8 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -- docs/maid/AUTOPILOT_PILOT_RESULT.md
           git diff --cached --check
-          git commit -m 'docs: MAID Groq 120B autonomous coding pilot (#16)'
+          git commit -m 'docs: MAID Groq Qwen 3.8 autonomous coding pilot (#16)'
           gh auth setup-git
           git push origin "HEAD:refs/heads/$MAID_AGENT_BRANCH"
-          gh pr create --repo "$GITHUB_REPOSITORY" --base master --head "$MAID_AGENT_BRANCH" --draft --title 'MAID Groq 120B autopilot pilot: issue #16' --body 'Verifies owner-gated issue-to-PR coding using strong Groq GPT OSS 120B within approved quota. Generated artifact only; no production deploy or certification. Requires independent source/CI review before merge. Refs #16.'
+          gh pr create --repo "$GITHUB_REPOSITORY" --base master --head "$MAID_AGENT_BRANCH" --draft --title 'MAID Groq Qwen 3.8 autopilot pilot: issue #16' --body 'Verifies owner-gated issue-to-PR coding using strong Groq Qwen 3.8 27B within approved quota. Generated artifact only; no production deploy or certification. Requires independent source/CI review before merge. Refs #16.'
           echo "DRAFT_PR_CREATED: $MAID_AGENT_BRANCH" >> "$GITHUB_STEP_SUMMARY"

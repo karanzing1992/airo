@@ -23,7 +23,7 @@ class StructuredWriterTests(unittest.TestCase):
         p=m.api_payload(self.task,[])
         fmt=p["response_format"]["json_schema"]
         self.assertTrue(fmt["strict"])
-        self.assertEqual(p["model"],"openai/gpt-oss-120b")
+        self.assertEqual(p["model"],"qwen/qwen3.8-27b")
         self.assertEqual(fmt["schema"]["additionalProperties"],False)
     def test_reject_dependency_regression(self):
         with tempfile.TemporaryDirectory() as tmp:
