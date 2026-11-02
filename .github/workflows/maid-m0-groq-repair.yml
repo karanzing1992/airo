@@ -1,0 +1,101 @@
+name: MAID M0 Groq React Repair
+on:
+  push:
+    branches: [master]
+    paths:
+      - .github/workflows/maid-m0-groq-repair.yml
+      - scripts/maid_m0_groq_react_repair.py
+      - tests/test_maid_m0_groq_react_repair.py
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: maid-m0-groq-repair
+  cancel-in-progress: false
+jobs:
+  fix-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Negative patch tests
+        run: python3 -m unittest discover -s tests -p 'test_maid_m0_groq_react_repair.py' -v
+      - name: Freeze trusted repair and deterministic Expo lint source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp scripts/maid_m0_groq_react_repair.py "$RUNNER_TEMP/maid-repair.py"
+          cp scripts/maid_m0_lint_bootstrap.py "$RUNNER_TEMP/maid-lint.py"
+          python3 -c 'import json,os,pathlib;p=json.loads(pathlib.Path("docs/maid/AUTONOMOUS_ISSUE_POLICY.json").read_text());pathlib.Path(os.environ["RUNNER_TEMP"],"task.json").write_text(json.dumps(p["tasks"][0]))'
+      - name: Checkout pinned upstream MAID on isolated branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin refs/heads/bootstrap/maid-upstream-60206bd:refs/remotes/origin/bootstrap/maid-upstream-60206bd
+          branch="autopilot/m0-groq-react-$GITHUB_RUN_ID"
+          git checkout -b "$branch" origin/bootstrap/maid-upstream-60206bd
+          echo "MAID_BRANCH=$branch" >> "$GITHUB_ENV"
+      - name: Setup Expo lint tools without suppressions
+        shell: bash
+        run: python3 "$RUNNER_TEMP/maid-lint.py" "$RUNNER_TEMP/task.json"
+      - name: Groq GPT OSS 120B propose four React source fixes
+        shell: bash
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${GROQ_API_KEY:-}" || exit 1
+          python3 -m pip install --quiet --disable-pip-version-check 'groq==1.7.0'
+          timeout 260s python3 "$RUNNER_TEMP/maid-repair.py"
+      - name: Reject unexpected paths before installation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+          allow={"package.json","eslint.config.js","components/dropdowns/dropdown.tsx",
+            "components/dropdowns/voice-dropdown.tsx","components/views/header-view.tsx",
+            "components/views/neural-network-animation.tsx"}
+          result=subprocess.run(["git","status","--porcelain","-uall"],text=True,capture_output=True,check=True).stdout
+          paths={line[3:] for line in result.splitlines() if line}
+          assert paths==allow, ("unexpected changes",sorted(paths.symmetric_difference(allow)))
+          print("M0_SOURCE_SCOPE_VERIFIED",sorted(paths))
+          PY
+          git diff --check
+      - name: Install dependencies and run non-suppressed lint and Jest
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+          timeout 440s yarn install --non-interactive --ignore-scripts --no-progress
+          timeout 240s yarn lint
+          CI=1 timeout 360s yarn test
+          git diff --check
+      - name: Publish source-only draft PR for independent review
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- package.json yarn.lock eslint.config.js components/dropdowns/dropdown.tsx components/dropdowns/voice-dropdown.tsx components/views/header-view.tsx components/views/neural-network-animation.tsx
+          git diff --cached --check
+          git commit -m 'fix: Groq M0 six React lint errors with Expo lint/Jest'
+          gh auth setup-git
+          git push origin "HEAD:refs/heads/$MAID_BRANCH"
+          gh pr create --repo "$GITHUB_REPOSITORY" --base bootstrap/maid-upstream-60206bd --head "$MAID_BRANCH" --draft \
+            --title 'MAID M0: Groq React hooks repair and passing lint/Jest' \
+            --body "Issue #1, upstream PR #14. Groq OSS 120B generated strict four-file React changes; Expo SDK57 ESLint bootstrap is reproducible. This exact run passed non-suppressed lint and Jest. Review before merging. Not a signed or production MAID Manager APK. Evidence: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          echo 'MAID_M0_GROQ_DRAFT_PR_CREATED' >> "$GITHUB_STEP_SUMMARY"
