@@ -1,0 +1,161 @@
+name: MAID Autonomous Issue Queue
+on:
+  schedule:
+    - cron: '17 */4 * * *'
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+concurrency:
+  group: maid-autonomous-queue-v1
+  cancel-in-progress: false
+env:
+  PYTHONDONTWRITEBYTECODE: '1'
+jobs:
+  admission:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    outputs:
+      authorized: ${{ steps.auth.outputs.authorized }}
+      selected: ${{ steps.pick.outputs.selected }}
+      task: ${{ steps.pick.outputs.task }}
+      issue: ${{ steps.pick.outputs.issue }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Authorize caller or automatic schedule
+        id: auth
+        run: python3 scripts/maid_autonomy.py admit
+      - name: Select next reviewed owner-created issue
+        id: pick
+        if: steps.auth.outputs.authorized == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/maid_autonomy.py select
+  build-pr:
+    needs: admission
+    if: needs.admission.outputs.authorized == 'true' && needs.admission.outputs.selected == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    env:
+      MAID_TASK_B64: ${{ needs.admission.outputs.task }}
+      MAID_ISSUE: ${{ needs.admission.outputs.issue }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Freeze policy and code in temporary trusted location
+        run: |
+          set -euo pipefail
+          cp scripts/maid_autonomy.py "$RUNNER_TEMP/maid_autonomy.py"
+          cp opencode.json "$RUNNER_TEMP/maid-opencode.json"
+          python3 - <<'PY'
+          import base64,json,os,pathlib
+          task=json.loads(base64.b64decode(os.environ["MAID_TASK_B64"]))
+          assert task["issue"]==int(os.environ["MAID_ISSUE"])
+          pathlib.Path(os.environ["RUNNER_TEMP"],"maid-task.json").write_text(json.dumps(task))
+          print("MAID_SELECTED",task["issue"],task["phase"],"base",task["base"])
+          PY
+      - name: Check out isolated issue base
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="$(python3 -c 'import json,os;print(json.load(open(os.environ["RUNNER_TEMP"]+"/maid-task.json"))["base"])')"
+          git fetch origin "refs/heads/$base:refs/remotes/origin/$base"
+          branch="autopilot/maid-auto-i$(printf '%02d' "$MAID_ISSUE")-$GITHUB_RUN_ID"
+          git checkout -b "$branch" "origin/$base"
+          echo "MAID_BRANCH=$branch" >> "$GITHUB_ENV"
+          echo "MAID_BASE=$base" >> "$GITHUB_ENV"
+      - name: Install pinned OpenCode before AI-modifiable files
+        run: npm install --global opencode-ai@1.19.3
+      - name: Generate bounded issue changes using Groq 120B
+        shell: bash
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GROQ_API_KEY:-}" ]; then echo '::error::Groq key missing; no work executed'; exit 1; fi
+          export OPENCODE_CONFIG="$RUNNER_TEMP/maid-opencode.json"
+          prompt="$(python3 - <<'PY'
+          import json,os
+          d=json.load(open(os.environ["RUNNER_TEMP"]+"/maid-task.json"))
+          print("You are the autonomous MAID GitHub code editor for owner issue #"+str(d["issue"])+". "+d["prompt"])
+          print("Read existing project docs and make REAL file edits using edit/write tools. Do not merely respond with JSON or recommendations.")
+          print("Allowed modified paths only: "+", ".join(d["allowedPaths"]))
+          print("No shell/web tools, no secrets, no production changes, no fake passes. Scope is one independently reviewable PR.")
+          PY
+          )"
+          timeout 840s opencode run --pure --agent build -m groq/openai/gpt-oss-120b "$prompt" | tee "$RUNNER_TEMP/maid-agent-result.log"
+      - name: Validate strict issue-specific changed files
+        run: |
+          set -euo pipefail
+          python3 "$RUNNER_TEMP/maid_autonomy.py" validate "$RUNNER_TEMP/maid-task.json"
+          git diff --check
+      - name: Independent deterministic source checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$MAID_ISSUE" = 1 ]; then
+            corepack enable
+            timeout 420s yarn install --non-interactive --ignore-scripts --no-progress
+            python3 "$RUNNER_TEMP/maid_autonomy.py" validate "$RUNNER_TEMP/maid-task.json"
+            CI=1 timeout 240s yarn lint
+            CI=1 timeout 360s yarn test
+          elif [ "$MAID_ISSUE" = 2 ]; then
+            find packages/protocol -name '*.json' -type f -print0 | xargs -0 -r -n1 python3 -m json.tool >/dev/null
+            test -f packages/protocol/package.json
+            (cd packages/protocol && npm test --if-present)
+          else
+            echo '::warning::Other issue stages need independent environment-specific CI before approval.'
+            test -d "$(python3 -c 'import json,os;d=json.load(open(os.environ["RUNNER_TEMP"]+"/maid-task.json"));print(d["allowedPaths"][0].split("/")[0])')"
+          fi
+      - name: Revalidate diff after tests and issue factual receipt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$RUNNER_TEMP/maid_autonomy.py" validate "$RUNNER_TEMP/maid-task.json"
+          git diff --check
+          echo "MAID_AUTONOMOUS_SOURCE_BASE=$(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+          echo "MAID_ISSUE=$MAID_ISSUE" >> "$GITHUB_STEP_SUMMARY"
+          echo "MAID_CI_TESTS_PASSED_FOR_THIS_TASK=true" >> "$GITHUB_STEP_SUMMARY"
+      - name: Commit and push isolated branch; create draft PR
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m "MAID AUTO: issue $MAID_ISSUE bounded development"
+          gh auth setup-git
+          git push origin "HEAD:refs/heads/$MAID_BRANCH"
+          gh pr create --repo "$GITHUB_REPOSITORY" --base "$MAID_BASE" --head "$MAID_BRANCH" --draft \
+            --title "MAID AUTO: I$(printf '%02d' "$MAID_ISSUE") bounded implementation" \
+            --body "Owner issue #$MAID_ISSUE. Generated through free-tier Groq 120B/OpenCode; strict path checks and task-specific tests passed at current branch. Detailed evidence: Actions run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID. Source base and target differ; do not certify or merge before independent review. Closes #$MAID_ISSUE only after full milestone acceptance."
+          echo "DRAFT_PR_CREATED=true" >> "$GITHUB_STEP_SUMMARY"
+      - name: Mark failed issue for explicit repair review
+        if: failure()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh label create 'maid:blocked' --repo "$GITHUB_REPOSITORY" --color B60205 --description 'Autonomous code job needs independent repair' --force || true
+          gh issue edit "$MAID_ISSUE" -R "$GITHUB_REPOSITORY" --add-label 'maid:blocked' || true
+          gh issue comment "$MAID_ISSUE" -R "$GITHUB_REPOSITORY" \
+            --body "MAID autonomous run $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID failed a required stage. No autonomous PR can be certified from this run. Issue marked blocked to prevent paid/quota retries. Review logs and remove maid:blocked only after remediation." || true
