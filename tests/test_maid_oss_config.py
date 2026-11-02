@@ -14,7 +14,7 @@ class GroqConfigTests(unittest.TestCase):
         self.assertIn("groq/openai/gpt-oss-120b",txt)
         self.assertNotIn("ollama pull",txt)
         self.assertNotIn("ollama serve",txt)
-        self.assertIn("github.event.comment.user.login == 'karanzing1992'",txt)
+        self.assertIn("if: github.event_name == 'issue_comment'",txt)
         self.assertIn("scripts/maid_oss_guard.py --validate-diff",txt)
         self.assertIn("  authorize-pilot:",txt)
         self.assertIn("needs: authorize-pilot",txt)
