@@ -73,7 +73,7 @@ def select(issues, prs, policy, *, master_has_upstream):
     return None
 
 def changed_paths(root="."):
-    result = command("git", "status", "--porcelain", "-uall")
+    result = subprocess.run(["git","status","--porcelain","-uall"],text=True,capture_output=True,check=True).stdout
     paths = []
     for line in result.splitlines():
         if not line.strip(): continue
