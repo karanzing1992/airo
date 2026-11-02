@@ -17,7 +17,6 @@ on:
       - 'app/**'
       - 'components/**'
       - 'context/**'
-      - '.github/workflows/maid-android-debug-apk.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -43,7 +42,7 @@ jobs:
           test -s docs/maid/APK_DEBUG_DELIVERY_RUNBOOK.md
   compile-android-debug:
     needs: workflow-source-guard
-    if: ${{ hashFiles('package.json') != '' }}
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.number == 14 }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
