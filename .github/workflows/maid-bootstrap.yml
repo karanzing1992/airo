@@ -39,26 +39,36 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git checkout -B "$IMPORT_BRANCH" origin/master
-          # Keep the MAID management docs/workflows. Preserve upstream LICENSE.
-          rsync -a --exclude '/.git/' --exclude '/.github/' --exclude '/README.md' --exclude '/docs/maid/' /tmp/maid-upstream/ ./
-          test -s LICENSE
-          test -f package.json
-          cat > UPSTREAM_SOURCE.md <<EOF
+          # Existing PR branches are immutable inputs for later CI reruns.
+          # Never force-push or reset them when this workflow is retriggered.
+          if git ls-remote --exit-code --heads origin "$IMPORT_BRANCH" >/dev/null 2>&1; then
+            git fetch origin "$IMPORT_BRANCH"
+            git checkout -B "$IMPORT_BRANCH" "origin/$IMPORT_BRANCH"
+            echo 'Reusing existing pinned import branch; will run CI on exact PR source.'
+          else
+            git checkout -B "$IMPORT_BRANCH" origin/master
+            # Preserve MAID manager docs/workflows and upstream LICENSE.
+            rsync -a --exclude '/.git/' --exclude '/.github/' --exclude '/README.md' --exclude '/docs/maid/' /tmp/maid-upstream/ ./
+            test -s LICENSE
+            test -f package.json
+            cat > UPSTREAM_SOURCE.md <<EOF
           # Upstream MAID source attribution
           Original repository: https://github.com/Mobile-Artificial-Intelligence/maid
           Pinned baseline revision: $UPSTREAM_SHA
           Upstream license: MIT (see LICENSE).
           This derivative preserves the original authorship attribution and will use its own package identifier and signing keys for future releases.
           EOF
-          git add -A
-          git diff --cached --stat
-          if ! git diff --cached --quiet; then
-            git commit -m 'build: import pinned MAID source with attribution'
-            git push origin "$IMPORT_BRANCH"
-          else
-            echo 'Import branch already matches source.'
+            git add -A
+            git diff --cached --stat
+            if ! git diff --cached --quiet; then
+              git commit -m 'build: import pinned MAID source with attribution'
+              git push origin "$IMPORT_BRANCH"
+            else
+              echo 'Already matches pinned source.'
+            fi
           fi
+          test -s LICENSE
+          test -f package.json
       - name: Open draft import PR (best effort)
         shell: bash
         continue-on-error: true
